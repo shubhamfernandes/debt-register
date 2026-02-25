@@ -15,7 +15,9 @@ use Illuminate\Support\Facades\Validator;
 final class CustomerImportService implements CustomerImportServiceInterface
 {
     private const EXPECTED_HEADERS = ['name', 'email', 'date_of_birth', 'annual_income'];
+
     private const EXPECTED_COLS = 4;
+
     private const BATCH_SIZE = 100;
 
     public function import(UploadedFile $file): array
@@ -41,7 +43,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
             $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
         }
 
-        //Header normalization (trim + lowercase)
+        // Header normalization (trim + lowercase)
         $normalizedHeader = array_map(
             fn ($h) => strtolower(trim((string) $h)),
             $header
@@ -74,7 +76,6 @@ final class CustomerImportService implements CustomerImportServiceInterface
 
             $totalProcessed++;
 
-
             if (count($values) !== self::EXPECTED_COLS) {
                 $errors[] = [
                     'row_number' => $rowNumber,
@@ -83,6 +84,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
                         ['field' => 'row', 'message' => 'Malformed CSV row: wrong number of columns.'],
                     ],
                 ];
+
                 continue;
             }
 
@@ -125,7 +127,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
         $emailsInFile = array_values(array_filter(array_keys($emailCounts), fn ($e) => $e !== ''));
         $existingEmails = [];
 
-        if (!empty($emailsInFile)) {
+        if (! empty($emailsInFile)) {
             $existingEmails = Customer::query()
                 ->whereIn('email', $emailsInFile)
                 ->pluck('email')
@@ -154,6 +156,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
                         ],
                     ];
                 }
+
                 continue;
             }
 
@@ -201,12 +204,13 @@ final class CustomerImportService implements CustomerImportServiceInterface
                             $rowErrors[] = ['field' => 'email', 'message' => 'Email already exists.'];
                         }
 
-                        if (!empty($rowErrors)) {
+                        if (! empty($rowErrors)) {
                             $errors[] = [
                                 'row_number' => $rowNum,
                                 'values' => $this->errorValues($data),
                                 'errors' => $rowErrors,
                             ];
+
                             continue;
                         }
 

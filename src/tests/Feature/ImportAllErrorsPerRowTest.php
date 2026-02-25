@@ -17,7 +17,7 @@ class ImportAllErrorsPerRowTest extends TestCase
         // - email invalid
         // - date_of_birth in future
         // - annual_income negative
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 ,not-an-email,2999-01-01,-10
 CSV;

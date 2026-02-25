@@ -12,7 +12,7 @@ class ImportValidCsvTest extends TestCase
 
     public function test_fully_valid_csv_imports_all_rows(): void
     {
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 John Doe,john@example.com,1990-05-12,50000
 Jane Smith,jane@example.com,1985-01-01,75000

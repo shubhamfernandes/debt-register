@@ -9,12 +9,13 @@ use Tests\TestCase;
 class ImportDuplicateEmailsInFileTest extends TestCase
 {
     use RefreshDatabase;
+
     /**
      * A basic feature test example.
      */
     public function test_duplicate_emails_within_same_file_are_flagged_for_both_rows(): void
     {
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Dupe One,dupe@example.com,1990-01-01,2000
 Dupe Two,dupe@example.com,1991-01-01,3000
@@ -52,7 +53,7 @@ CSV;
 
     public function test_duplicate_emails_in_file_do_not_block_other_valid_rows(): void
     {
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Dupe One,dupe@example.com,1990-01-01,2000
 Valid User,valid@example.com,1990-01-01,1000

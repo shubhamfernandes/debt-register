@@ -14,7 +14,7 @@ class ImportMixedCsvTest extends TestCase
     {
         // Header row = 1
         // Data rows start at row 2
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Valid User,valid1@example.com,1990-01-01,50000
 ,missingname@example.com,1990-01-01,1000
@@ -57,8 +57,8 @@ CSV;
     }
 
     public function test_mixed_csv_skips_empty_rows_and_allows_optional_fields_blank(): void
-{
-    $csv = <<<CSV
+    {
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Valid One,valid1@example.com,,
 
@@ -66,58 +66,58 @@ Valid Two,valid2@example.com,1990-01-01,
 Bad Email,bad-email,,
 CSV;
 
-    $response = $this->postJson('/api/import', [
-        'file' => UploadedFile::fake()->createWithContent('mixed2.csv', $csv),
-    ]);
-
-    $response->assertOk()
-        ->assertJson([
-            // Non-empty data rows: Valid One, Valid Two, Bad Email = 3 processed
-            'total_rows_processed' => 3,
-            'imported_count' => 2,
-            'failed_count' => 1,
+        $response = $this->postJson('/api/import', [
+            'file' => UploadedFile::fake()->createWithContent('mixed2.csv', $csv),
         ]);
 
-    $json = $response->json();
+        $response->assertOk()
+            ->assertJson([
+                // Non-empty data rows: Valid One, Valid Two, Bad Email = 3 processed
+                'total_rows_processed' => 3,
+                'imported_count' => 2,
+                'failed_count' => 1,
+            ]);
 
-    // Bad email should be on row 5:
-    // row1 header
-    // row2 valid one
-    // row3 empty row (skipped)
-    // row4 valid two
-    // row5 bad email
-    $rowNumbers = array_column($json['errors'], 'row_number');
-    $this->assertContains(5, $rowNumbers);
+        $json = $response->json();
 
-    $this->assertDatabaseCount('customers', 2);
-}
+        // Bad email should be on row 5:
+        // row1 header
+        // row2 valid one
+        // row3 empty row (skipped)
+        // row4 valid two
+        // row5 bad email
+        $rowNumbers = array_column($json['errors'], 'row_number');
+        $this->assertContains(5, $rowNumbers);
 
-public function test_mixed_csv_reports_malformed_rows_and_still_imports_valid_rows(): void
-{
-    $csv = <<<CSV
+        $this->assertDatabaseCount('customers', 2);
+    }
+
+    public function test_mixed_csv_reports_malformed_rows_and_still_imports_valid_rows(): void
+    {
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Valid One,valid1@example.com,1990-01-01,1000
 Malformed Row,malformed@example.com
 Valid Two,valid2@example.com,1991-01-01,2000
 CSV;
 
-    $response = $this->postJson('/api/import', [
-        'file' => UploadedFile::fake()->createWithContent('mixed3.csv', $csv),
-    ]);
-
-    $response->assertOk()
-        ->assertJson([
-            'total_rows_processed' => 3,
-            'imported_count' => 2,
-            'failed_count' => 1,
+        $response = $this->postJson('/api/import', [
+            'file' => UploadedFile::fake()->createWithContent('mixed3.csv', $csv),
         ]);
 
-    $json = $response->json();
-    $this->assertCount(1, $json['errors']);
+        $response->assertOk()
+            ->assertJson([
+                'total_rows_processed' => 3,
+                'imported_count' => 2,
+                'failed_count' => 1,
+            ]);
 
-    // Malformed row is the 2nd data row, so row number = 3
-    $this->assertSame(3, $json['errors'][0]['row_number']);
+        $json = $response->json();
+        $this->assertCount(1, $json['errors']);
 
-    $this->assertDatabaseCount('customers', 2);
-}
+        // Malformed row is the 2nd data row, so row number = 3
+        $this->assertSame(3, $json['errors'][0]['row_number']);
+
+        $this->assertDatabaseCount('customers', 2);
+    }
 }

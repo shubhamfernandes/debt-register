@@ -12,7 +12,7 @@ class ImportMalformedCsvTest extends TestCase
 
     public function test_malformed_row_is_reported_and_valid_rows_still_import(): void
     {
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Valid One,valid1@example.com,1990-01-01,1000
 Malformed Row,malformed@example.com

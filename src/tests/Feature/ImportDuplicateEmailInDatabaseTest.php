@@ -10,6 +10,7 @@ use Tests\TestCase;
 class ImportDuplicateEmailInDatabaseTest extends TestCase
 {
     use RefreshDatabase;
+
     /**
      * A basic feature test example.
      */
@@ -23,7 +24,7 @@ class ImportDuplicateEmailInDatabaseTest extends TestCase
             'annual_income' => 1000,
         ]);
 
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 New User,existing@example.com,1991-01-01,2000
 CSV;
@@ -64,7 +65,7 @@ CSV;
             'annual_income' => 1000,
         ]);
 
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,date_of_birth,annual_income
 Dup Row,existing@example.com,1991-01-01,2000
 Valid Row,valid@example.com,1992-02-02,3000

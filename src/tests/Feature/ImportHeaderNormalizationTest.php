@@ -13,7 +13,7 @@ class ImportHeaderNormalizationTest extends TestCase
     public function test_header_is_case_and_whitespace_tolerant(): void
     {
         // Header has different casing + extra spaces
-        $csv = <<<CSV
+        $csv = <<<'CSV'
  Name , Email , Date_Of_Birth , Annual_Income
 John Doe,john@example.com,1990-05-12,50000
 CSV;
@@ -35,7 +35,7 @@ CSV;
 
     public function test_invalid_header_still_returns_422_with_validation_style_shape(): void
     {
-        $csv = <<<CSV
+        $csv = <<<'CSV'
 name,email,dob,annual_income
 John Doe,john@example.com,1990-05-12,50000
 CSV;

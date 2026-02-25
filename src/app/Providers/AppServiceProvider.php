@@ -14,9 +14,9 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(
-        CustomerImportServiceInterface::class,
-        CustomerImportService::class
-    );
+            CustomerImportServiceInterface::class,
+            CustomerImportService::class
+        );
     }
 
     /**
