@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
@@ -17,4 +18,9 @@ class Customer extends Model
         'date_of_birth' => 'date',
         'annual_income' => 'decimal:2',
     ];
+
+    public function scopeLatestFirst(Builder $query): Builder
+    {
+        return $query->orderByDesc('id');
+    }
 }
