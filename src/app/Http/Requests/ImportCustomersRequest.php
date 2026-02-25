@@ -22,7 +22,17 @@ class ImportCustomersRequest extends FormRequest
     public function rules(): array
     {
         return [
-        'file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'], // 5MB limit is reasonable
+        'file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'], // 5MB limit and only csv and sometimes txt files can have the same data format as csv
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'file.required' => 'Please upload a CSV file.',
+            'file.file' => 'The uploaded file must be a valid file.',
+            'file.mimes' => 'The uploaded file must be a valid CSV file',
+            'file.max' => 'The CSV file must not exceed 5MB.',
         ];
     }
 }
