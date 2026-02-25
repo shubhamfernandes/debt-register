@@ -6,6 +6,7 @@ use App\Contracts\CustomerImportServiceInterface;
 use App\Exceptions\InvalidCsvFileException;
 use App\Exceptions\InvalidCsvHeaderException;
 use App\Models\Customer;
+use App\Support\CustomerRowValidation;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -63,6 +64,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
             if (count($values) !== self::EXPECTED_COLS) {
                 $errors[] = [
                     'row_number' => $rowNumber,
+                    'values_raw' => $values,
                     'errors' => [
                         ['field' => 'row', 'message' => 'Malformed CSV row: wrong number of columns.'],
                     ],
@@ -118,22 +120,8 @@ final class CustomerImportService implements CustomerImportServiceInterface
 
                 $validator = Validator::make(
                     $data,
-                    [
-                        'name' => ['required', 'string'],
-                        'email' => ['required', 'string', 'email', Rule::unique('customers', 'email')],
-                        'date_of_birth' => ['nullable', 'date', 'before:today'],
-                        'annual_income' => ['nullable', 'numeric', 'gt:0'],
-                    ],
-                    [
-                        'name.required' => 'Name is required.',
-                        'email.required' => 'Email is required.',
-                        'email.email' => 'Email must be a valid email address.',
-                        'email.unique' => 'Email already exists.',
-                        'date_of_birth.date' => 'Date of birth must be a valid date.',
-                        'date_of_birth.before' => 'Date of birth must be a date in the past.',
-                        'annual_income.numeric' => 'Annual income must be a number.',
-                        'annual_income.gt' => 'Annual income must be a positive number.',
-                    ]
+                    CustomerRowValidation::rules(),
+                    CustomerRowValidation::messages()
                 );
 
                 $rowErrors = [];
@@ -157,6 +145,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
                 if (!empty($rowErrors)) {
                     $errors[] = [
                         'row_number' => $rowNum,
+                        'values' => $this->errorValues($data),
                         'errors' => $rowErrors,
                     ];
                     continue;
@@ -183,6 +172,17 @@ final class CustomerImportService implements CustomerImportServiceInterface
             'failed_count' => count($errors),
             'imported' => $imported,
             'errors' => $errors,
+        ];
+    }
+
+    private function errorValues(array $data): array
+    {
+
+        return [
+            'name' => $data['name'] ?? null,
+            'email' => $data['email'] ?? null,
+            'date_of_birth' => $data['date_of_birth'] ?? null,
+            'annual_income' => $data['annual_income'] ?? null,
         ];
     }
 }
