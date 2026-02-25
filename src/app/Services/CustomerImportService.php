@@ -204,6 +204,9 @@ final class CustomerImportService implements CustomerImportServiceInterface
                             $rowErrors[] = ['field' => 'email', 'message' => 'Email already exists.'];
                         }
 
+                        // Dedupe
+                        $rowErrors = $this->dedupeErrors($rowErrors);
+
                         if (! empty($rowErrors)) {
                             $errors[] = [
                                 'row_number' => $rowNum,
@@ -277,5 +280,26 @@ final class CustomerImportService implements CustomerImportServiceInterface
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'annual_income' => $data['annual_income'] ?? null,
         ];
+    }
+
+    private function dedupeErrors(array $rowErrors): array
+    {
+        $seen = [];
+        $unique = [];
+
+        foreach ($rowErrors as $err) {
+            $field = (string) ($err['field'] ?? '');
+            $message = (string) ($err['message'] ?? '');
+            $key = $field.'|'.$message;
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $unique[] = ['field' => $field, 'message' => $message];
+        }
+
+        return $unique;
     }
 }
