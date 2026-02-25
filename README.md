@@ -149,7 +149,7 @@ GET http://localhost:8080/api/customers?per_page=10&page=1
 9. Add header `Accept: application/json`
 10. Send the request
 
-> **Important:** Do not manually set `Content-Type`. Postman automatically sets multipart form-data with the correct boundary.
+> **Important:** Do not manually set `Content-Type`. Postman automatically sets multipart form-data .
 
 ---
 
@@ -170,12 +170,6 @@ docker compose exec app php artisan test --filter=ImportValidCsvTest
 ---
 
 ## Development Commands
-
-View logs:
-
-```bash
-docker compose logs -f
-```
 
 Reset database:
 
@@ -221,7 +215,7 @@ If a database error occurs during insertion of a specific row, that row is repor
 A sample CSV file with a mix of valid and invalid rows is included at:
 
 ```
-storage/samples/customers_sample.csv
+samples/valid_customers_100.csv
 ```
 
 This can be used directly with Postman or curl to demo the API.
