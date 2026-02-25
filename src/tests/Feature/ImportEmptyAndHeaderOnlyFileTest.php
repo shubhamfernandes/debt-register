@@ -22,9 +22,12 @@ class ImportEmptyAndHeaderOnlyFileTest extends TestCase
 
         $response->assertStatus(422);
 
+        // Consistent Laravel validation-style shape
         $response->assertJsonFragment([
-            'error' => 'The uploaded file is empty.',
+            'message' => 'The given data was invalid.',
         ]);
+
+        $response->assertJsonPath('errors.file.0', 'The uploaded file is empty.');
     }
 
     public function test_header_only_file_returns_422_before_row_processing(): void
@@ -41,7 +44,9 @@ class ImportEmptyAndHeaderOnlyFileTest extends TestCase
         $response->assertStatus(422);
 
         $response->assertJsonFragment([
-            'error' => 'The CSV file contains only headers and no data.',
+            'message' => 'The given data was invalid.',
         ]);
+
+        $response->assertJsonPath('errors.file.0', 'The CSV file contains only headers and no data.');
     }
 }

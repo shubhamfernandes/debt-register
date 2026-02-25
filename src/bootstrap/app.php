@@ -17,14 +17,17 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         //
     })
-        ->withExceptions(function ($exceptions) {
-        $exceptions->render(function (InvalidCsvFileException|InvalidCsvHeaderException $e, Request $request) {
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'error' => $e->getMessage(),
-                ], 422);
-            }
+    ->withExceptions(function ($exceptions) {
+    $exceptions->render(function (InvalidCsvFileException|InvalidCsvHeaderException $e, Request $request) {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'file' => [$e->getMessage()],
+                ],
+            ], 422);
+        }
 
-            return null;
-        });
-    })->create();
+        return null;
+    });
+})->create();
