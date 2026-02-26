@@ -1,13 +1,15 @@
+
 # CSV Import API
 
 ## Overview
 
 This project implements a Laravel-based CSV import API with full
-validation, partial imports, detailed error reporting, pagination, and
-automated test coverage.
+validation, partial imports, detailed error reporting, pagination,
+batch processing, and automated test coverage.
 
 The system is designed with clean architecture principles and follows
-Laravel best practices.
+Laravel best practices, focusing on correctness, transparency, and
+robust error handling.
 
 ---
 
@@ -17,7 +19,10 @@ Laravel best practices.
 ✔ Partial imports — valid rows are never blocked by invalid ones  
 ✔ Duplicate detection within the same file and against the database  
 ✔ Case-insensitive header and email matching  
-✔ Malformed row handling  
+✔ Malformed row handling (wrong column counts)  
+✔ All validation errors per row returned (not just first failure)  
+✔ Batch-based database transactions for resilience  
+✔ Protection against database failures mid-import  
 ✔ Consistent JSON validation responses  
 ✔ Pagination for imported customers  
 ✔ Comprehensive automated test coverage  
@@ -89,6 +94,8 @@ John Doe,john@example.com,1990-05-12,50000
 Jane Smith,jane@example.com,1985-01-01,75000
 ```
 
+---
+
 ### Response Structure
 
 ```json
@@ -96,6 +103,8 @@ Jane Smith,jane@example.com,1985-01-01,75000
   "total_rows_processed": 2,
   "imported_count": 2,
   "failed_count": 0,
+  "aborted": false,
+  "fatal_error": null,
   "imported": [
     { "id": 1, "name": "John Doe" },
     { "id": 2, "name": "Jane Smith" }
@@ -108,18 +117,18 @@ Each failed row includes:
 
 - `row_number` — the exact line in the file (header = row 1)
 - `values` — the submitted values for that row
-- `errors` — array of `{ field, message }` objects, one per validation failure
+- `errors` — array of `{ field, message }` objects (all validation failures)
 
 Validation rules:
 
 - Name and email are required
-- Email must be a valid format
+- Email must be valid format
 - Email must be unique (within the file and against the database)
-- Date of birth must be a valid date in the past
+- Date of birth must be valid and not in the future
 - Annual income must be numeric and positive
 
 Empty rows are skipped silently.  
-Malformed rows (wrong column count) are reported without blocking valid rows.  
+Malformed rows are reported without blocking valid rows.  
 All validation errors per row are returned — not just the first.
 
 ---
@@ -136,6 +145,104 @@ GET http://localhost:8080/api/customers?per_page=10&page=1
 
 ---
 
+## Error Handling Philosophy
+
+This implementation strictly follows the brief:
+
+• No silent failures  
+• No corrupted partial commits  
+• No hidden validation errors  
+
+### File-level errors
+
+If the file is:
+
+- Empty
+- Missing header
+- Wrong header format
+
+The API returns HTTP 422 before row processing begins.
+
+### Row-level errors
+
+If individual rows fail validation:
+
+- They are reported
+- Valid rows continue importing
+- Each row includes all validation errors
+
+### Database failure handling
+
+Imports are processed in batches.  
+If a fatal database failure occurs:
+
+- Previously committed batches remain intact
+- Remaining rows are marked as failed
+- The response includes `aborted = true`
+- A `fatal_error` message is returned
+
+This ensures transparency and protects data integrity.
+
+---
+
+## Architecture Decisions
+
+### Thin Controllers
+
+Controllers delegate business logic to a dedicated service class.  
+This improves testability and separation of concerns.
+
+### Dedicated Validation Layer
+
+`CustomerRowValidation` centralises rules and messages, keeping the
+service focused on orchestration logic.
+
+### Batch Transactions
+
+Imports are processed in batches rather than a single global transaction.
+
+This prevents a late database failure from rolling back previously
+successful rows, aligning with the partial import requirement.
+
+### Prefetched Duplicate Detection
+
+Emails are collected upfront and checked against the database using a
+single `WHERE IN` query for performance efficiency.
+
+### Case Normalisation
+
+Headers and emails are trimmed and lowercased before comparison to
+ensure consistency regardless of user input formatting.
+
+### Error Deduplication
+
+Duplicate error messages per field are removed to prevent noisy
+responses.
+
+---
+
+## Testing
+
+Run the full test suite:
+
+```bash
+docker compose exec app php artisan test
+```
+
+Test scenarios covered include:
+
+- Fully valid CSV
+- Mixed valid and invalid rows
+- Duplicate emails within file
+- Duplicate emails against database
+- Every individual validation rule
+- Empty file
+- File with only headers
+- Malformed CSV rows
+- Multiple validation errors per row
+
+---
+
 ## Testing with Postman
 
 1. Open Postman
@@ -149,73 +256,39 @@ GET http://localhost:8080/api/customers?per_page=10&page=1
 9. Add header `Accept: application/json`
 10. Send the request
 
-> **Important:** Do not manually set `Content-Type`. Postman automatically sets multipart form-data .
+## Alternative Testing Methods
 
----
+If Postman is unavailable, the API can also be tested using:
 
-## Running Automated Tests
-
-Run the full test suite:
+### cURL
 
 ```bash
-docker compose exec app php artisan test
+curl -X POST http://localhost:8080/api/import   -H "Accept: application/json"   -F "file=@customers.csv"
 ```
 
-Run a specific test class:
+### Laravel HTTP Tests
 
-```bash
-docker compose exec app php artisan test --filter=ImportValidCsvTest
-```
-
----
-
-## Development Commands
-
-Reset database:
-
-```bash
-docker compose exec app php artisan migrate:fresh
-```
-
-Stop containers:
-
-```bash
-docker compose down
-```
-
----
-
-## Architecture Notes
-
-**Thin controllers, dedicated service layer**  
-The `ImportController` does nothing except receive the request and hand off to `CustomerImportService`. All business logic lives in the service, making it independently testable and replaceable.
-
-**Validation extracted to a support class**  
-`CustomerRowValidation` holds all validation rules and messages in one place. This keeps the service focused on orchestration rather than rule definitions, and makes it easy to extend or change rules without touching import logic.
-
-**Custom exceptions rendered into consistent JSON responses**  
-`InvalidCsvFileException` and `InvalidCsvHeaderException` both extend `UnprocessableEntityHttpException` and are caught in `bootstrap/app.php`. This means file-level errors return the same `{ message, errors }` shape as Laravel's standard validation responses, so API clients never need to handle a different error format.
-
-**No global transaction around inserts**  
-Each valid row is inserted independently. Wrapping all inserts in a single transaction would mean a DB error on row 50 could silently roll back the 49 rows already imported — directly contradicting the partial import requirement. Independent inserts mean each valid row is committed as soon as it passes validation.
-
-**Single prefetch query for DB duplicate detection**  
-Rather than running a uniqueness query per row (N queries for N rows), all emails from the file are collected upfront and checked against the database in one `WHERE IN` query. The result is cached in memory for the duration of the import. This keeps the import efficient regardless of file size.
-
-**Case-insensitive header and email normalisation**  
-CSV headers are lowercased and trimmed before comparison, so files exported from Excel or other tools with capitalised headers are accepted without error. Emails are also normalised to lowercase at parse time, ensuring duplicate detection and database lookups are consistent regardless of how the user typed the address.
-
-**database error insertion**  
-If a database error occurs during insertion of a specific row, that row is reported as failed while previously committed rows remain intact. The import process continues unless a fatal database failure prevents further processing.
+Feature tests are included for automated verification.
 
 ---
 
 ## Sample CSV
 
-A sample CSV file with a mix of valid and invalid rows is included at:
+Sample CSV files are included in:
 
 ```
-samples/valid_customers_100.csv
+samples/
 ```
 
-This can be used directly with Postman or curl to demo the API.
+These include both fully valid and mixed validation examples.
+
+---
+
+## Git History
+
+A small number of clear, focused commits were used to demonstrate
+incremental development and reasoning.
+
+```
+git log --oneline -10
+```

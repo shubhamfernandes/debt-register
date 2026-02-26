@@ -9,7 +9,6 @@ use App\Models\Customer;
 use App\Support\CustomerRowValidation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 final class CustomerImportService implements CustomerImportServiceInterface
@@ -31,10 +30,101 @@ final class CustomerImportService implements CustomerImportServiceInterface
             throw new InvalidCsvFileException('Unable to read the uploaded file.');
         }
 
+        try {
+            $this->assertValidHeader($handle);
+
+            [$totalProcessed, $rows, $errors] = $this->parseRows($handle);
+
+            if ($totalProcessed === 0) {
+                throw new InvalidCsvFileException('The CSV file contains only headers and no data.');
+            }
+
+            [$duplicateSet, $existingSet] = $this->buildDuplicateSets($rows);
+
+            $imported = [];
+            $aborted = false;
+            $fatalError = null;
+
+            foreach (array_chunk($rows, self::BATCH_SIZE) as $batch) {
+                if ($aborted) {
+                    $this->markBatchAborted($batch, $errors, $fatalError);
+
+                    continue;
+                }
+
+                foreach ($batch as $row) {
+                    $rowNum = $row['row_number'];
+                    $data = $row['data'];
+
+                    $rowErrors = $this->validateRow($data, $duplicateSet, $existingSet);
+
+                    if (! empty($rowErrors)) {
+                        $errors[] = [
+                            'row_number' => $rowNum,
+                            'values' => $this->errorValues($data),
+                            'errors' => $rowErrors,
+                        ];
+
+                        continue;
+                    }
+
+                    // Insert row (no transaction -> true partial imports)
+                    try {
+                        $customer = Customer::create([
+                            'name' => $data['name'],
+                            'email' => $data['email'],
+                            'date_of_birth' => $data['date_of_birth'],
+                            'annual_income' => $data['annual_income'],
+                        ]);
+
+                        $imported[] = [
+                            'id' => $customer->id,
+                            'name' => $customer->name,
+                        ];
+
+                        // Update in-memory set to prevent duplicates later in this same import run
+                        $existingSet[$data['email']] = true;
+                    } catch (QueryException $qe) {
+                        // If DB becomes unavailable mid-import, abort remaining rows
+                        $aborted = true;
+                        $fatalError = 'Database became unavailable; import aborted.';
+
+                        $errors[] = [
+                            'row_number' => $rowNum,
+                            'values' => $this->errorValues($data),
+                            'errors' => [
+                                ['field' => 'row', 'message' => $fatalError],
+                            ],
+                        ];
+
+                        // Mark the rest of the current batch as aborted
+                        $remaining = $this->remainingRowsInBatch($batch, $rowNum);
+                        $this->markBatchAborted($remaining, $errors, $fatalError);
+
+                        break; // move to next batches
+                    }
+                }
+            }
+
+            return [
+                'total_rows_processed' => $totalProcessed,
+                'imported_count' => count($imported),
+                'failed_count' => count($errors),
+                'aborted' => $aborted,
+                'fatal_error' => $fatalError,
+                'imported' => $imported,
+                'errors' => $errors,
+            ];
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    private function assertValidHeader($handle): void
+    {
         $header = fgetcsv($handle);
 
         if ($header === false) {
-            fclose($handle);
             throw new InvalidCsvFileException('The CSV file appears to be empty or invalid.');
         }
 
@@ -43,34 +133,31 @@ final class CustomerImportService implements CustomerImportServiceInterface
             $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
         }
 
-        // Header normalization (trim + lowercase)
         $normalizedHeader = array_map(
             fn ($h) => strtolower(trim((string) $h)),
             $header
         );
 
         if ($normalizedHeader !== self::EXPECTED_HEADERS) {
-            fclose($handle);
-            throw new InvalidCsvHeaderException(
-                'Invalid CSV header. Expected: name,email,date_of_birth,annual_income'
-            );
+            throw new InvalidCsvHeaderException('Invalid CSV header. Expected: name,email,date_of_birth,annual_income');
         }
+    }
 
+    /**
+     * @return array{0:int,1:array<int,array{row_number:int,data:array}>,2:array<int,mixed>}
+     */
+    private function parseRows($handle): array
+    {
         $totalProcessed = 0;
-        $rowNumber = 1;
+        $rowNumber = 1; // header row is 1
 
-        $structurallyValidRows = [];
+        $rows = [];
         $errors = [];
 
         while (($values = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            $isEmpty =
-                $values === [null] ||
-                $values === [] ||
-                count(array_filter($values, fn ($v) => trim((string) $v) !== '')) === 0;
-
-            if ($isEmpty) {
+            if ($this->isEmptyRow($values)) {
                 continue;
             }
 
@@ -90,25 +177,42 @@ final class CustomerImportService implements CustomerImportServiceInterface
 
             $data = array_combine(self::EXPECTED_HEADERS, $values);
 
+            // Trim string fields
             $data = array_map(fn ($v) => is_string($v) ? trim($v) : $v, $data);
 
+            // Normalize email
             $data['email'] = strtolower(trim((string) ($data['email'] ?? '')));
 
-            $structurallyValidRows[] = [
+            // Normalize dob and income fields
+            $data['date_of_birth'] = ($data['date_of_birth'] ?? '') === '' ? null : $data['date_of_birth'];
+            $data['annual_income'] = ($data['annual_income'] ?? '') === '' ? null : $data['annual_income'];
+
+            $rows[] = [
                 'row_number' => $rowNumber,
                 'data' => $data,
             ];
         }
 
-        fclose($handle);
+        return [$totalProcessed, $rows, $errors];
+    }
 
-        if ($totalProcessed === 0) {
-            throw new InvalidCsvFileException('The CSV file contains only headers and no data.');
-        }
+    private function isEmptyRow(array $values): bool
+    {
+        return
+            $values === [null] ||
+            $values === [] ||
+            count(array_filter($values, fn ($v) => trim((string) $v) !== '')) === 0;
+    }
 
-        // Duplicate detection within the file (case-insensitive because we normalized)
+    /**
+     * @param  array<int,array{row_number:int,data:array}>  $rows
+     * @return array{0:array<string,bool>,1:array<string,bool>}
+     */
+    private function buildDuplicateSets(array $rows): array
+    {
+        // Count emails for in-file duplicates
         $emailCounts = [];
-        foreach ($structurallyValidRows as $row) {
+        foreach ($rows as $row) {
             $email = (string) ($row['data']['email'] ?? '');
             if ($email === '') {
                 continue;
@@ -123,7 +227,7 @@ final class CustomerImportService implements CustomerImportServiceInterface
             }
         }
 
-        //  One-query duplicate check against DB
+        // Prefetch existing emails (single query)
         $emailsInFile = array_values(array_filter(array_keys($emailCounts), fn ($e) => $e !== ''));
         $existingEmails = [];
 
@@ -137,139 +241,91 @@ final class CustomerImportService implements CustomerImportServiceInterface
 
         $existingSet = array_fill_keys($existingEmails, true);
 
-        $imported = [];
-        $aborted = false;
-        $fatalError = null;
+        return [$duplicateSet, $existingSet];
+    }
 
-        //  Batch processing
-        $batches = array_chunk($structurallyValidRows, self::BATCH_SIZE);
+    /**
+     * @param  array<string,mixed>  $data
+     * @param  array<string,bool>  $duplicateSet
+     * @param  array<string,bool>  $existingSet
+     * @return array<int,array{field:string,message:string}>
+     */
+    private function validateRow(array $data, array $duplicateSet, array $existingSet): array
+    {
+        $validator = Validator::make(
+            $data,
+            CustomerRowValidation::rules(),
+            CustomerRowValidation::messages()
+        );
 
-        foreach ($batches as $batchIndex => $batch) {
-            if ($aborted) {
-                // Mark remaining rows as unprocessed due to fatal error
-                foreach ($batch as $row) {
-                    $errors[] = [
-                        'row_number' => $row['row_number'],
-                        'values' => $this->errorValues($row['data']),
-                        'errors' => [
-                            ['field' => 'row', 'message' => $fatalError ?? 'Import aborted.'],
-                        ],
-                    ];
-                }
+        $rowErrors = [];
 
-                continue;
-            }
-
-            try {
-                DB::transaction(function () use (
-                    $batch,
-                    &$imported,
-                    &$errors,
-                    &$existingSet,
-                    $duplicateSet
-                ) {
-                    foreach ($batch as $row) {
-                        $rowNum = $row['row_number'];
-                        $data = $row['data'];
-
-                        // Normalise empty optional fields to null
-                        $data['date_of_birth'] = ($data['date_of_birth'] ?? '') === '' ? null : $data['date_of_birth'];
-                        $data['annual_income'] = ($data['annual_income'] ?? '') === '' ? null : $data['annual_income'];
-
-                        $validator = Validator::make(
-                            $data,
-                            CustomerRowValidation::rules(),
-                            CustomerRowValidation::messages()
-                        );
-
-                        $rowErrors = [];
-
-                        if ($validator->fails()) {
-                            foreach ($validator->errors()->messages() as $field => $messages) {
-                                foreach ($messages as $message) {
-                                    $rowErrors[] = ['field' => $field, 'message' => $message];
-                                }
-                            }
-                        }
-
-                        $email = (string) ($data['email'] ?? '');
-
-                        // In-file duplicate check
-                        if ($email !== '' && isset($duplicateSet[$email])) {
-                            $rowErrors[] = ['field' => 'email', 'message' => 'Duplicate email found within the same file.'];
-                        }
-
-                        // DB duplicate check (prefetch set + updated as we insert)
-                        if ($email !== '' && isset($existingSet[$email])) {
-                            $rowErrors[] = ['field' => 'email', 'message' => 'Email already exists.'];
-                        }
-
-                        // Dedupe
-                        $rowErrors = $this->dedupeErrors($rowErrors);
-
-                        if (! empty($rowErrors)) {
-                            $errors[] = [
-                                'row_number' => $rowNum,
-                                'values' => $this->errorValues($data),
-                                'errors' => $rowErrors,
-                            ];
-
-                            continue;
-                        }
-
-                        try {
-                            $customer = Customer::create([
-                                'name' => $data['name'],
-                                'email' => $email,
-                                'date_of_birth' => $data['date_of_birth'],
-                                'annual_income' => $data['annual_income'],
-                            ]);
-
-                            $imported[] = [
-                                'id' => $customer->id,
-                                'name' => $customer->name,
-                            ];
-
-                            if ($email !== '') {
-                                $existingSet[$email] = true;
-                            }
-                        } catch (QueryException $qe) {
-                            $errors[] = [
-                                'row_number' => $rowNum,
-                                'values' => $this->errorValues($data),
-                                'errors' => [
-                                    ['field' => 'row', 'message' => 'Database error while importing this row.'],
-                                ],
-                            ];
-                        }
-                    }
-                });
-            } catch (\Throwable $e) {
-
-                $aborted = true;
-                $fatalError = 'Database became unavailable; import aborted.';
-
-                foreach ($batch as $row) {
-                    $errors[] = [
-                        'row_number' => $row['row_number'],
-                        'values' => $this->errorValues($row['data']),
-                        'errors' => [
-                            ['field' => 'row', 'message' => $fatalError],
-                        ],
-                    ];
+        if ($validator->fails()) {
+            foreach ($validator->errors()->messages() as $field => $messages) {
+                foreach ($messages as $message) {
+                    $rowErrors[] = ['field' => $field, 'message' => $message];
                 }
             }
         }
 
-        return [
-            'total_rows_processed' => $totalProcessed,
-            'imported_count' => count($imported),
-            'failed_count' => count($errors),
-            'aborted' => $aborted,
-            'fatal_error' => $fatalError,
-            'imported' => $imported,
-            'errors' => $errors,
-        ];
+        $email = (string) ($data['email'] ?? '');
+
+        // In-file duplicate check
+        if (
+            $email !== '' &&
+            ! $validator->errors()->has('email') && // only if email format is valid
+            isset($duplicateSet[$email])
+        ) {
+            $rowErrors[] = ['field' => 'email', 'message' => 'Duplicate email found within the same file.'];
+        }
+
+        // DB duplicate check (prefetched + updated as we insert)
+        if ($email !== '' && isset($existingSet[$email])) {
+            $rowErrors[] = ['field' => 'email', 'message' => 'Email already exists.'];
+        }
+
+        return $this->dedupeErrors($rowErrors);
+    }
+
+    /**
+     * @param  array<int,array{row_number:int,data:array}>  $batch
+     * @param  array<int,mixed>  $errors
+     */
+    private function markBatchAborted(array $batch, array &$errors, ?string $fatalError): void
+    {
+        foreach ($batch as $row) {
+            $errors[] = [
+                'row_number' => $row['row_number'],
+                'values' => $this->errorValues($row['data']),
+                'errors' => [
+                    ['field' => 'row', 'message' => $fatalError ?? 'Import aborted.'],
+                ],
+            ];
+        }
+    }
+
+    /**
+     * @param  array<int,array{row_number:int,data:array}>  $batch
+     * @return array<int,array{row_number:int,data:array}>
+     */
+    private function remainingRowsInBatch(array $batch, int $currentRowNumber): array
+    {
+        $remaining = [];
+        $foundCurrent = false;
+
+        foreach ($batch as $row) {
+            if ($row['row_number'] === $currentRowNumber) {
+                $foundCurrent = true;
+
+                continue;
+            }
+
+            if ($foundCurrent) {
+                $remaining[] = $row;
+            }
+        }
+
+        return $remaining;
     }
 
     private function errorValues(array $data): array
@@ -282,6 +338,10 @@ final class CustomerImportService implements CustomerImportServiceInterface
         ];
     }
 
+    /**
+     * @param  array<int,array{field:string,message:string}>  $rowErrors
+     * @return array<int,array{field:string,message:string}>
+     */
     private function dedupeErrors(array $rowErrors): array
     {
         $seen = [];
