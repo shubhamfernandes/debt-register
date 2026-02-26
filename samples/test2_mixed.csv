@@ -1,0 +1,7 @@
+name,email,date_of_birth,annual_income
+Valid User,valid@example.com,1990-01-01,50000
+,missing@example.com,1990-01-01,1000
+Bad Email,bad-email,1990-01-01,1000
+Future DOB,future@example.com,2999-01-01,1000
+Negative Income,neg@example.com,1990-01-01,-5
+Another Valid,another@example.com,1985-05-05,60000

@@ -1,0 +1,6 @@
+name,email,date_of_birth,annual_income
+Valid User,valid@example.com,,
+
+
+No DOB,nodob@example.com,,50000
+Only Required,required@example.com,,

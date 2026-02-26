@@ -1,0 +1,5 @@
+name,email,date_of_birth,annual_income
+First Dupe,duplicate@example.com,1990-01-01,50000
+Second Dupe,duplicate@example.com,1991-01-01,60000
+Unique User,unique@example.com,1985-05-05,70000
+Third Dupe,duplicate@example.com,1992-02-02,55000

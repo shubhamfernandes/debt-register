@@ -1,0 +1,4 @@
+name,email,date_of_birth,annual_income
+Upper Case,UPPER@example.com,1990-01-01,50000
+Lower Case,upper@example.com,1991-01-01,60000
+Mixed Case,Upper@example.com,1992-02-02,55000

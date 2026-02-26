@@ -1,0 +1,6 @@
+name,email,date_of_birth,annual_income
+Valid One,valid1@example.com,1990-01-01,50000
+Malformed Row,malformed@example.com  // Missing 2 columns
+Valid Two,valid2@example.com,1991-01-01,60000
+Another,malformed2@example.com,1992-02-02  // Missing 1 column
+Valid Three,valid3@example.com,1993-03-03,70000
