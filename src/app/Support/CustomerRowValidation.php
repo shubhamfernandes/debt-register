@@ -22,7 +22,7 @@ final class CustomerRowValidation
             'email.email' => 'Email must be a valid email address.',
             'email.unique' => 'Email already exists.',
             'date_of_birth.date' => 'Date of birth must be a valid date.',
-            'date_of_birth.before' => 'Date of birth must be a date in the past.',
+            'date_of_birth.before_or_equal' => 'Date of birth must not be in the future.',
             'annual_income.numeric' => 'Annual income must be a number.',
             'annual_income.gt' => 'Annual income must be a positive number.',
         ];
