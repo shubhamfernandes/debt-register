@@ -21,7 +21,7 @@ robust error handling.
 ✔ Case-insensitive header and email matching  
 ✔ Malformed row handling (wrong column counts)  
 ✔ All validation errors per row returned (not just first failure)  
-✔ Batch-based database transactions for resilience  
+✔ Batch-based processing for resilience 
 ✔ Protection against database failures mid-import  
 ✔ Consistent JSON validation responses  
 ✔ Pagination for imported customers  
@@ -87,7 +87,7 @@ http://localhost:8080
 
 Uploads a CSV file and returns an import report.
 
-Expected CSV header (case-insensitive):
+Expected CSV header (case-insensitive, exact column order):
 
 ```csv
 name,email,date_of_birth,annual_income
@@ -211,9 +211,9 @@ This improves testability and separation of concerns.
 `CustomerRowValidation` centralises rules and messages, keeping the
 service focused on orchestration logic.
 
-### Batch Transactions
+### Batch Processing
 
-Imports are processed in batches rather than a single global transaction.
+Imports are processed in batches rather than a single global transaction, and rows are inserted individually to guarantee true partial imports.
 
 This prevents a late database failure from rolling back previously
 successful rows, aligning with the partial import requirement.

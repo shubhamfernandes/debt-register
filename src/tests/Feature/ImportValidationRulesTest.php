@@ -138,4 +138,24 @@ CSV;
 
         $this->assertDatabaseCount('customers', 1);
     }
+
+    public function test_date_of_birth_equal_to_today_is_allowed(): void
+    {
+        $today = now()->toDateString();
+
+        $csv = <<<CSV
+    name,email,date_of_birth,annual_income
+    Today DOB,today@example.com,{$today},1000
+    CSV;
+
+        $response = $this->postCsv($csv);
+
+        $response->assertOk()->assertJson([
+            'total_rows_processed' => 1,
+            'imported_count' => 1,
+            'failed_count' => 0,
+        ]);
+
+        $this->assertDatabaseCount('customers', 1);
+    }
 }

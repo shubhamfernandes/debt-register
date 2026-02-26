@@ -2,16 +2,14 @@
 
 namespace App\Support;
 
-use Illuminate\Validation\Rule;
-
 final class CustomerRowValidation
 {
     public static function rules(): array
     {
         return [
             'name' => ['required', 'string'],
-            'email' => ['required', 'string', 'email', Rule::unique('customers', 'email')],
-            'date_of_birth' => ['nullable', 'date', 'before:today'],
+            'email' => ['required', 'string', 'email'],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
             'annual_income' => ['nullable', 'numeric', 'gt:0'],
         ];
     }

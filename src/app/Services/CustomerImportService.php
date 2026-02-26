@@ -260,28 +260,30 @@ final class CustomerImportService implements CustomerImportServiceInterface
 
         $rowErrors = [];
 
+        $validator->after(function ($validator) use ($data, $duplicateSet, $existingSet, &$rowErrors) {
+            $email = (string) ($data['email'] ?? '');
+            $emailHasIssues = $validator->errors()->has('email');
+
+            // Only run uniqueness checks if email exists AND email itself is valid
+            if ($email === '' || $emailHasIssues) {
+                return;
+            }
+
+            if (isset($duplicateSet[$email])) {
+                $rowErrors[] = ['field' => 'email', 'message' => 'Duplicate email found within the same file.'];
+            }
+
+            if (isset($existingSet[$email])) {
+                $rowErrors[] = ['field' => 'email', 'message' => 'Email already exists.'];
+            }
+        });
+
         if ($validator->fails()) {
             foreach ($validator->errors()->messages() as $field => $messages) {
                 foreach ($messages as $message) {
                     $rowErrors[] = ['field' => $field, 'message' => $message];
                 }
             }
-        }
-
-        $email = (string) ($data['email'] ?? '');
-
-        // In-file duplicate check
-        if (
-            $email !== '' &&
-            ! $validator->errors()->has('email') && // only if email format is valid
-            isset($duplicateSet[$email])
-        ) {
-            $rowErrors[] = ['field' => 'email', 'message' => 'Duplicate email found within the same file.'];
-        }
-
-        // DB duplicate check (prefetched + updated as we insert)
-        if ($email !== '' && isset($existingSet[$email])) {
-            $rowErrors[] = ['field' => 'email', 'message' => 'Email already exists.'];
         }
 
         return $this->dedupeErrors($rowErrors);
