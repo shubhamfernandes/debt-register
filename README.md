@@ -38,10 +38,11 @@ robust error handling.
 
 ## Docker Setup
 
-### 1. Copy environment file
 
+### 1. Clone the repository
 ```bash
-cp .env.example .env
+git clone https://github.com/shubhamfernandes/debt-register.git
+cd debt-register
 ```
 
 ### 2. Build and start containers
@@ -56,13 +57,19 @@ docker compose up -d --build
 docker compose exec app composer install
 ```
 
-### 4. Generate application key
+### 4. Create the environment file
+
+```bash
+docker compose exec app cp .env.example .env
+```
+
+### 5. Run database migrations
 
 ```bash
 docker compose exec app php artisan key:generate
 ```
 
-### 5. Run database migrations
+### 6. Run database migrations
 
 ```bash
 docker compose exec app php artisan migrate
