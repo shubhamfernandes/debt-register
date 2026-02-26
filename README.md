@@ -187,6 +187,13 @@ This ensures transparency and protects data integrity.
 
 ## Architecture Decisions
 
+### Design Scope Decisions
+
+Why no DTOs or background jobs?
+
+This assignment focuses on file processing, validation design, error reporting, and data integrity. Introducing DTO layers or queue-based background processing would add architectural complexity without improving clarity or correctness for this specific brief.
+
+
 ### Thin Controllers
 
 Controllers delegate business logic to a dedicated service class.  
